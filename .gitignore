@@ -1,0 +1,31 @@
+# Ham XPS verileri depoya girmez
+*.xlsx
+*.xlsm
+*.xls
+*.vgd
+*.VGD
+data/
+raw/
+
+# Üretilen figürler
+out/
+*.tif
+*.tiff
+*.eps
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# Editör / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,13 +1,18 @@
 @echo off
-REM XPS Figure Studio - Windows baslatici
-REM Ilk calistirmada sanal ortam kurar ve paketleri yukler.
+REM ---------------------------------------------------------------------------
+REM  XPS Figure Studio - Windows baslatici (konsol penceresi gorunur)
+REM  Ilk calistirmada sanal ortam kurar ve paketleri yukler.
+REM
+REM  Masaustu kisayolu icin kisayol_olustur.bat dosyasini kullanin; o kisayol
+REM  pythonw.exe ile run.py'yi cagirir ve bu siyah pencere hic acilmaz.
+REM ---------------------------------------------------------------------------
 
 cd /d "%~dp0"
 
 where python >nul 2>nul
 if errorlevel 1 (
     echo [HATA] Python bulunamadi. https://www.python.org/downloads/ adresinden
-    echo Python 3.10+ kurun ve kurulum sirasinda "Add Python to PATH" secenegini isaretleyin.
+    echo Python 3.10+ kurun ve kurulum sirasinda "Add python.exe to PATH" secenegini isaretleyin.
     pause
     exit /b 1
 )
@@ -31,5 +36,6 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo XPS Figure Studio baslatiliyor... Tarayici otomatik acilacak.
-".venv\Scripts\python.exe" -m streamlit run app.py
+echo Kapatmak icin bu pencereyi kapatin veya Ctrl+C tuslayin.
+".venv\Scripts\python.exe" run.py
 pause

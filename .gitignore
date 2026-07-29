@@ -13,6 +13,9 @@ out/
 *.tiff
 *.eps
 
+# Baslatici gunlugu
+run.log
+
 # Python
 __pycache__/
 *.py[cod]

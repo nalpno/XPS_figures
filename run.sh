@@ -19,4 +19,4 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 
 echo "XPS Figure Studio başlatılıyor... Tarayıcı otomatik açılacak."
-exec .venv/bin/python -m streamlit run app.py
+exec .venv/bin/python run.py

@@ -1,6 +1,9 @@
 [server]
 maxUploadSize = 200
-headless = false
+# headless=true, Streamlit'in ilk calistirmada konsoldan e-posta sormasini onler;
+# tarayiciyi run.py kendisi acar.
+headless = true
+fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false

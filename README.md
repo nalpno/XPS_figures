@@ -27,8 +27,14 @@ OriginPro ile elle yapılan düzenleme işini tek arayüzde toplar.
 
 ### Windows
 
-`run.bat` dosyasına çift tıklayın. İlk çalıştırmada sanal ortamı kurar ve
-gerekli paketleri indirir (birkaç dakika), sonra tarayıcıda açılır.
+1. **`run.bat`** dosyasına çift tıklayın. İlk çalıştırmada sanal ortamı kurar
+   ve gerekli paketleri indirir (birkaç dakika), sonra tarayıcıda açılır.
+2. **`kisayol_olustur.bat`** dosyasına bir kez çift tıklayın — masaüstünde
+   *XPS Figure Studio* kısayolu oluşur.
+
+Kısayol `pythonw.exe run.py` çalıştırır, yani siyah konsol penceresi hiç
+açılmaz; doğrudan tarayıcı gelir. Sonraki açılışlarda sadece masaüstü
+simgesine çift tıklamanız yeterli.
 
 ### macOS / Linux
 
@@ -36,6 +42,19 @@ gerekli paketleri indirir (birkaç dakika), sonra tarayıcıda açılır.
 chmod +x run.sh     # yalnızca ilk seferde
 ./run.sh
 ```
+
+### Başlatıcılar arasındaki fark
+
+| Dosya | Ne yapar |
+|---|---|
+| `run.py` | Asıl başlatıcı. Eksik paketleri kurar, boş port bulur, sunucuyu açar ve tarayıcıyı yönlendirir. Uygulama zaten açıksa ikinci kopya başlatmaz, var olan sekmeyi açar. |
+| `run.bat` / `run.sh` | Sanal ortamı hazırlar, sonra `run.py`'yi çağırır. Konsol görünür — bir sorun olursa mesajları burada görürsünüz. |
+| `kisayol_olustur.bat` | Masaüstü kısayolunu oluşturur (`pythonw.exe run.py`, konsolsuz). |
+
+Klasörde `.venv` varsa `run.py` kendini otomatik olarak o sanal ortamın
+Python'u ile yeniden başlatır, böylece paketler iki kez kurulmaz.
+Konsol olmadığı için tüm çıktılar **`run.log`** dosyasına yazılır; bir şey
+ters giderse önce oraya bakın.
 
 ### Elle kurulum
 
@@ -156,7 +175,11 @@ Renk paletleri: Origin klasik, yüksek kontrast, **renk körü dostu
 ## Proje yapısı
 
 ```
+run.py                 Başlatıcı (paket kontrolü, port seçimi, tarayıcı)
+run.bat / run.sh       Sanal ortam kurulumu + başlatma
+kisayol_olustur.bat    Masaüstü kısayolu oluşturur
 app.py                 Streamlit arayüzü (Veri / Figür / Tablo sekmeleri)
+assets/xps.ico         Kısayol simgesi (tools/make_icon.py ile üretilir)
 xpsfig/
 ├── parser.py          Avantage .xlsx okuyucu (bölgeler, Peak Table, kimyasal durum)
 ├── style.py           matplotlib rcParams, font ve renk paletleri

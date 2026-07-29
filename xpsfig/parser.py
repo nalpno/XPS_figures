@@ -18,7 +18,7 @@ Survey and un-deconvoluted core files use the same layout with fewer series
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -410,6 +410,55 @@ def load_workbook_dataset(source: Any, label: str | None = None, drop_zeros: boo
         return dataset
     finally:
         wb.close()
+
+
+def shift_dataset(dataset: Dataset, delta: float) -> Dataset:
+    """Return a copy with every binding energy moved by *delta* eV.
+
+    Used for charge correction, where the adventitious C1s line is pinned to a
+    reference value (usually 284.8 eV) and the whole spectrum moves with it.
+    """
+    if not delta:
+        return dataset
+
+    shifted = Dataset(label=dataset.label, source=dataset.source, title=dataset.title)
+    for name, region in dataset.regions.items():
+        shifted.regions[name] = Region(
+            name=region.name,
+            sheet=region.sheet,
+            energy=region.energy + delta,
+            series=region.series,          # intensities are unaffected by the shift
+            metadata=region.metadata,
+        )
+    shifted.peaks = [
+        replace(peak, peak_be=None if peak.peak_be is None else peak.peak_be + delta)
+        for peak in dataset.peaks
+    ]
+    shifted.chemical_states = dataset.chemical_states
+    return shifted
+
+
+def charge_correction(dataset: Dataset, reference: float = 284.8,
+                      element: str = "C1s") -> float | None:
+    """eV needed to move the dominant *element* line onto *reference*.
+
+    Prefers the fitted/core Peak Table entry; falls back to the maximum of the
+    measured region when no peak table is available.
+    """
+    candidates = [p for p in dataset.peaks
+                  if p.element.lower() == element.lower() and p.peak_be is not None]
+    for source in ("core", "fit", "survey"):
+        preferred = [p for p in candidates if p.source == source]
+        if preferred:
+            main = max(preferred, key=lambda p: (p.height or p.area_p or 0))
+            return reference - main.peak_be
+
+    region = dataset.regions.get(element)
+    if region is not None and region.raw is not None:
+        y = region.raw.y
+        if not np.all(np.isnan(y)):
+            return reference - float(region.energy[int(np.nanargmax(y))])
+    return None
 
 
 def merge_datasets(datasets: list[Dataset], label: str) -> Dataset:

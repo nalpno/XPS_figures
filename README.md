@@ -13,8 +13,12 @@ OriginPro ile elle yapılan düzenleme işini tek arayüzde toplar.
 - **Dekonvolüsyon panelleri**: açık halka ham veri, renkli dolgulu bileşenler,
   kırmızı background, siyah envelope, isteğe bağlı residual.
 - **Çok panelli figürler**: `a)` `b)` `c)` harflendirmesi, ortak alt legend,
-  panel boyutları santimetre cinsinden.
-- Her şeyin **rengi, adı ve konumu** arayüzden değiştirilebilir.
+  alt alta panellerde ortak x ekseni, panel boyutları santimetre cinsinden.
+- **Yük düzeltmesi (charge correction)**: C1s pikini referans değere (284.8 eV)
+  sabitleyip tüm bölgeleri birlikte kaydırır; tablolara da yansır.
+- Her şeyin **rengi, çizgi stili, adı ve konumu** arayüzden değiştirilebilir.
+- **Proje kaydet/yükle**: tüm ayarları `.json` olarak saklayıp figürü aylar
+  sonra birebir yeniden üretebilirsiniz.
 - **300 / 600 / 1200 dpi** PNG ve TIFF (LZW), ayrıca PDF, SVG, EPS çıktısı.
 - **Tablo sekmesi**: Peak Table verilerinden makale tablosu (Word `.docx`,
   Excel `.xlsx`, CSV, LaTeX) — üç çizgili dergi formatında.
@@ -61,21 +65,46 @@ temizleyerek dosyaları otomatik gruplar.
 | `LZO-850C-decon1.xlsx` | `LZO(850 °C)` |
 
 Bir bölge hem dekonvolüsyonlu hem dekonvolüsyonsuz geldiyse **fitli olan**
-kullanılır. Çizim sırasını ve numune renklerini bu sekmeden ayarlarsınız.
+kullanılır. Çizim sırasını, numune renklerini, çizgi stilini ve kalınlığını bu
+sekmeden ayarlarsınız.
 
 > **Avantage kenar artefaktı**: Avantage, fit bileşeni ve background
 > sütunlarının ilk satırına `0` yazar. Varsayılan olarak bu değerler
 > gizlenir; aksi hâlde eğri grafiğin dibine çakılır.
 
+#### Yük düzeltmesi (charge correction)
+
+Yalıtkan numunelerde yüzey yüklenmesi tüm spektrumu kaydırır. Sekmenin
+alt kısmındaki **🎯 Tüm numuneleri C1s = 284.8 eV'ye hizala** düğmesi her
+numunenin adventitious karbon pikini bulup gereken kaydırmayı hesaplar ve
+uygular. Peak Table varsa oradan (önce core, sonra fit, sonra survey), yoksa
+spektrumun maksimumundan okunur. Değerleri numune bazında elle de
+girebilirsiniz.
+
+Kaydırma **hem grafik eksenlerine hem tablolardaki Peak BE değerlerine**
+uygulanır; şiddetler değişmez. Referans değeri ve referans bölgeyi
+(C1s yerine başka bir seviye) değiştirebilirsiniz.
+
 ### 2 · Figür sekmesi
 
-Hazır şablonlardan birini seçin (tek panel, 2×2, `5 panel (3 üst + 2 alt
-ortalı)` …) ya da satır/sütun sayısını elle verin. Her panel için:
+Hazır şablonlardan birini seçin ya da satır/sütun sayısını elle verin:
+
+| Şablon | Kullanım |
+|---|---|
+| `Tek panel`, `2 panel`, `4 panel (2×2)`, `6 panel (2×3)` | Standart ızgara düzenleri. |
+| `5 panel (3 üst + 2 alt ortalı)` | Survey + dört core seviyesi; alt sıra ortalanır. |
+| `Dekonvolüsyon yığını (numune başına panel)` | Her numune için bir dekonvolüsyon paneli, alt alta. Panel sayısı yüklü numune sayısı kadar otomatik ayarlanır. |
+
+Her panel için:
 
 | Panel tipi | Ne yapar |
 |---|---|
 | **Numune karşılaştırma** | Seçilen numunelerin aynı bölgesini çizer. `Dikey kaydırma = 0` tam üst üste (overlay), `> 0` yığılmış (stacked) grafik verir. |
 | **Dekonvolüsyon** | Tek numunenin fitli bölgesini bileşenleriyle çizer. Her bileşenin rengi ve legend'de görünecek adı ayrı ayrı düzenlenir. |
+
+**Alt alta panellerde ortak x ekseni** seçeneği, aynı sütunda altında başka
+panel bulunanların eksen etiketlerini gizler; yalnızca en alttaki panel eksen
+başlığını taşır.
 
 Normalizasyon (maksimum = 1, min-maks, alan = 1), eksen aralığı, tick adımı,
 legend konumu, panel içi etiket ve **pik etiketleri/okları** panel bazında
@@ -102,6 +131,18 @@ dosyası yüklüyse, hangisinin Peak Table değerlerinin kullanılacağını bel
 Makalelerde genellikle **core-level** değerleri raporlanır (varsayılan).
 
 Word çıktısı, dergilerin istediği üç çizgili (dikey çizgisiz) formatta gelir.
+
+## Proje kaydet / yükle (sol panel)
+
+**💾 Proje kaydet / yükle** bölümünden tüm yapılandırmayı `.json` olarak
+indirebilirsiniz: numune isimleri ve gruplaması, renkler, çizgi stilleri, yük
+kaydırmaları, bileşen renk ve adları, panel ayarları, düzen ve stil
+tercihleri.
+
+Veri dosyaları projeye gömülmez. Geri yüklerken önce projeyi seçip
+**📂 Projeyi geri yükle** deyin, sonra aynı `.xlsx` dosyalarını tekrar
+yükleyin — dosya adları eşleştiği için numune ataması kendiliğinden oturur.
+Bir hakem düzeltmesi geldiğinde figürü sıfırdan kurmak zorunda kalmazsınız.
 
 ## Genel stil (sol panel)
 

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 from typing import Any
 
@@ -24,7 +25,11 @@ PRESETS = {
     "4 panel (yan yana)": {"nrows": 1, "ncols": 4, "width": 19.0, "height": 6.5},
     "5 panel (3 üst + 2 alt ortalı)": {"nrows": 2, "ncols": 6, "width": 18.0, "height": 13.0},
     "6 panel (2×3)": {"nrows": 2, "ncols": 3, "width": 18.0, "height": 12.0},
+    # nrows = 0 means "one panel per loaded sample", sized at `height` each
+    "Dekonvolüsyon yığını (numune başına panel)": {"nrows": 0, "ncols": 1, "width": 9.0, "height": 4.0},
 }
+
+DECON_STACK_PRESET = "Dekonvolüsyon yığını (numune başına panel)"
 
 PRESET_GRIDS = {
     "5 panel (3 üst + 2 alt ortalı)": [
@@ -33,6 +38,8 @@ PRESET_GRIDS = {
 }
 
 LETTERS = "abcdefghijklmnop"
+LINE_STYLES = ["-", "--", "-.", ":"]
+LINE_STYLE_NAMES = {"-": "Düz", "--": "Kesikli", "-.": "Nokta-çizgi", ":": "Noktalı"}
 LEGEND_LOCS = [
     "upper right", "upper left", "lower right", "lower left",
     "center right", "center left", "upper center", "lower center", "best",
@@ -70,7 +77,7 @@ def guess_sample_name(dataset: parser.Dataset, filename: str) -> str:
     return base.strip(" -_") or filename
 
 
-def samples() -> list[tuple[str, parser.Dataset]]:
+def samples(apply_shift: bool = True) -> list[tuple[str, parser.Dataset]]:
     """Merged datasets in user order, only for labels that still have files."""
     groups: dict[str, list[parser.Dataset]] = {}
     for filename, label in st.session_state.assign.items():
@@ -81,7 +88,15 @@ def samples() -> list[tuple[str, parser.Dataset]]:
     ordered = [l for l in st.session_state.sample_order if l in groups]
     ordered += [l for l in groups if l not in ordered]
     st.session_state.sample_order = ordered
-    return [(label, parser.merge_datasets(groups[label], label)) for label in ordered]
+
+    result = []
+    for label in ordered:
+        merged = parser.merge_datasets(groups[label], label)
+        if apply_shift:
+            delta = st.session_state.sample_style.get(label, {}).get("be_shift", 0.0)
+            merged = parser.shift_dataset(merged, float(delta))
+        result.append((label, merged))
+    return result
 
 
 def sample_color(label: str, index: int, palette: str) -> str:
@@ -101,27 +116,108 @@ def all_regions(sample_list: list[tuple[str, parser.Dataset]]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# sidebar: project save / load
+# ---------------------------------------------------------------------------
+PROJECT_KEYS = [
+    "assign", "sample_order", "sample_style", "comp_colors", "comp_names",
+    "panels", "layout", "preset",
+    "sty_font", "sty_size", "sty_lw", "sty_axw", "sty_tick", "sty_tickdir",
+    "sty_palette", "sty_fill",
+]
+PROJECT_VERSION = 1
+
+
+def _json_default(obj: Any):
+    """numpy scalars leak in through st.data_editor; make them JSON-safe."""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    raise TypeError(f"{type(obj)} JSON'a çevrilemiyor")
+
+
+def dump_project(state: dict[str, Any]) -> bytes:
+    payload = {"version": PROJECT_VERSION,
+               "state": {k: state.get(k) for k in PROJECT_KEYS}}
+    return json.dumps(payload, ensure_ascii=False, indent=2,
+                      default=_json_default).encode("utf-8")
+
+
+def load_project(data: bytes) -> dict[str, Any]:
+    """Parse a project file into the session values it should restore."""
+    payload = json.loads(data.decode("utf-8"))
+    state = payload.get("state", payload)
+    restored: dict[str, Any] = {}
+    for key in PROJECT_KEYS:
+        if key not in state or state[key] is None:
+            continue
+        value = state[key]
+        if key == "panels" and isinstance(value, list):
+            # fill in any option added since the project was saved
+            value = [{**default_panel(p.get("region", "Survey")), **p}
+                     for p in value if isinstance(p, dict)]
+        restored[key] = value
+    return restored
+
+
+def project_bytes() -> bytes:
+    return dump_project({k: st.session_state.get(k) for k in PROJECT_KEYS})
+
+
+def restore_project(data: bytes) -> None:
+    for key, value in load_project(data).items():
+        st.session_state[key] = value
+
+
+def sidebar_project() -> None:
+    with st.sidebar.expander("💾 Proje kaydet / yükle"):
+        st.caption("Numune isimleri, renkler, kaydırmalar, panel ayarları ve stil "
+                   "tercihleri saklanır. Veri dosyaları saklanmaz — projeyi geri "
+                   "yükledikten sonra aynı `.xlsx` dosyalarını tekrar yükleyin.")
+        st.download_button("⬇️ Projeyi indir (.json)", project_bytes(),
+                           "xps_project.json", "application/json", width="stretch")
+
+        uploaded = st.file_uploader("Proje dosyası", type=["json"], key="project_upload",
+                                    label_visibility="collapsed")
+        if uploaded is not None and st.button("📂 Projeyi geri yükle", width="stretch"):
+            try:
+                restore_project(uploaded.getvalue())
+            except Exception as exc:                      # noqa: BLE001
+                st.error(f"Proje okunamadı: {exc}")
+            else:
+                st.success("Proje geri yüklendi.")
+                st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # sidebar: global style
 # ---------------------------------------------------------------------------
 def sidebar_style() -> dict[str, Any]:
+    sidebar_project()
     st.sidebar.header("🎨 Genel stil")
 
     fonts = style.available_fonts()
-    font = st.sidebar.selectbox("Yazı tipi", fonts, index=0)
+    st.session_state.setdefault("sty_font", fonts[0])
+    font = st.sidebar.selectbox("Yazı tipi", fonts, key="sty_font")
     if not style.font_is_installed(font):
         st.sidebar.caption(f"⚠️ {font} sistemde kurulu değil; en yakın alternatif kullanılacak.")
 
+    for key, value in [("sty_size", 9.0), ("sty_lw", 1.2), ("sty_axw", 1.2),
+                       ("sty_tick", 4.0), ("sty_tickdir", "in"),
+                       ("sty_palette", style.DEFAULT_LINE_PALETTE),
+                       ("sty_fill", style.DEFAULT_FILL_PALETTE)]:
+        st.session_state.setdefault(key, value)
+
     c1, c2 = st.sidebar.columns(2)
-    base_size = c1.number_input("Yazı boyutu (pt)", 5.0, 20.0, 9.0, 0.5)
-    line_width = c2.number_input("Çizgi kalınlığı", 0.3, 4.0, 1.2, 0.1)
-    axes_width = c1.number_input("Çerçeve kalınlığı", 0.3, 4.0, 1.2, 0.1)
-    tick_length = c2.number_input("Tick uzunluğu", 1.0, 10.0, 4.0, 0.5)
-    tick_dir = st.sidebar.radio("Tick yönü", ["in", "out", "inout"], horizontal=True, index=0)
+    base_size = c1.number_input("Yazı boyutu (pt)", 5.0, 20.0, step=0.5, key="sty_size")
+    line_width = c2.number_input("Çizgi kalınlığı", 0.3, 4.0, step=0.1, key="sty_lw")
+    axes_width = c1.number_input("Çerçeve kalınlığı", 0.3, 4.0, step=0.1, key="sty_axw")
+    tick_length = c2.number_input("Tick uzunluğu", 1.0, 10.0, step=0.5, key="sty_tick")
+    tick_dir = st.sidebar.radio("Tick yönü", ["in", "out", "inout"], horizontal=True,
+                                key="sty_tickdir")
 
     palette = st.sidebar.selectbox("Numune renk paleti", list(style.LINE_PALETTES),
-                                   index=list(style.LINE_PALETTES).index(style.DEFAULT_LINE_PALETTE))
+                                   key="sty_palette")
     fill_palette = st.sidebar.selectbox("Dekonvolüsyon dolgu paleti", list(style.FILL_PALETTES),
-                                        index=list(style.FILL_PALETTES).index(style.DEFAULT_FILL_PALETTE))
+                                        key="sty_fill")
 
     if st.sidebar.button("🔄 Renkleri paletten yenile", width="stretch"):
         for entry in st.session_state.sample_style.values():
@@ -139,7 +235,7 @@ def sidebar_style() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # tab 1: data
 # ---------------------------------------------------------------------------
-def tab_data() -> None:
+def tab_data(opts) -> None:
     st.subheader("1 · Avantage .xlsx dosyalarını yükleyin")
     st.caption(
         "Survey, core ve deconvolution dosyalarını birlikte yükleyebilirsiniz. "
@@ -222,10 +318,59 @@ def tab_data() -> None:
     cols = st.columns(min(5, len(sample_list)))
     for i, (label, ds) in enumerate(sample_list):
         with cols[i % len(cols)]:
+            entry = st.session_state.sample_style.setdefault(label, {})
             current = sample_color(label, i, st.session_state["_palette"])
-            picked = st.color_picker(label, current, key=f"color_{label}")
-            st.session_state.sample_style[label]["color"] = picked
+            entry["color"] = st.color_picker(label, current, key=f"color_{label}")
+            entry["linestyle"] = st.selectbox(
+                "Çizgi", LINE_STYLES, key=f"ls_{label}",
+                index=LINE_STYLES.index(entry.get("linestyle", "-")),
+                format_func=LINE_STYLE_NAMES.get, label_visibility="collapsed",
+            )
+            entry["linewidth"] = st.number_input(
+                "Kalınlık", 0.2, 4.0,
+                float(entry.get("linewidth", opts["line_width"])), 0.1,
+                key=f"lw_{label}", label_visibility="collapsed",
+                help="Bu numuneye özel çizgi kalınlığı; yan paneldeki genel ayarı geçersiz kılar.",
+            )
             st.caption(f"{len(ds.regions)} bölge · {len(ds.peaks)} pik")
+
+    st.divider()
+    st.subheader("4 · Yük düzeltmesi (charge correction)")
+    st.caption("Yalıtkan numunelerde tüm spektrum kayar. Adventitious karbon C1s "
+               "pikini referans değere sabitleyerek bütün bölgeleri birlikte kaydırır.")
+
+    c1, c2, c3 = st.columns([1, 1, 2])
+    reference = c1.number_input("Referans C1s (eV)", 280.0, 292.0, 284.8, 0.1)
+    ref_element = c2.selectbox("Referans bölge", all_regions(sample_list),
+                               index=max(0, all_regions(sample_list).index("C1s"))
+                               if "C1s" in all_regions(sample_list) else 0)
+    if c3.button(f"🎯 Tüm numuneleri {ref_element} = {reference} eV'ye hizala", width="stretch"):
+        missing = []
+        for label, ds in samples(apply_shift=False):
+            delta = parser.charge_correction(ds, reference, ref_element)
+            if delta is None:
+                missing.append(label)
+            else:
+                st.session_state.sample_style.setdefault(label, {})["be_shift"] = round(delta, 3)
+        if missing:
+            st.warning(f"{ref_element} bulunamadığı için atlandı: {', '.join(missing)}")
+        st.rerun()
+
+    shift_cols = st.columns(min(5, len(sample_list)))
+    for i, (label, _) in enumerate(sample_list):
+        with shift_cols[i % len(shift_cols)]:
+            entry = st.session_state.sample_style.setdefault(label, {})
+            entry["be_shift"] = st.number_input(
+                f"{label} (eV)", -20.0, 20.0, float(entry.get("be_shift", 0.0)), 0.01,
+                key=f"shift_{label}", format="%.2f",
+            )
+    if any(st.session_state.sample_style.get(l, {}).get("be_shift") for l, _ in sample_list):
+        st.info("Kaydırma uygulanıyor — hem grafiklerdeki eksen hem tablolardaki "
+                "Peak BE değerleri düzeltilmiş hâliyle gösterilir.")
+        if st.button("↩️ Kaydırmaları sıfırla"):
+            for entry in st.session_state.sample_style.values():
+                entry["be_shift"] = 0.0
+            st.rerun()
 
     with st.expander("📋 Ölçüm parametreleri (Avantage metadata)"):
         for label, ds in sample_list:
@@ -276,6 +421,40 @@ def default_panel(region: str) -> dict[str, Any]:
         "decon_label_loc": "lower left",
         "annotations": [],
     }
+
+
+def panels_for_preset(preset: str, sample_list, regions: list[str]) -> list[dict[str, Any]]:
+    """Panel configurations a freshly chosen layout starts from."""
+    if preset == DECON_STACK_PRESET:
+        # one deconvolution panel per sample, stacked vertically like Figure 2
+        fitted = [r for r in regions if r != "Survey"] or regions
+        region = fitted[0]
+        panels = []
+        for label, ds in sample_list:
+            cfg = default_panel(region)
+            cfg.update({
+                "kind": "decon", "decon_sample": label, "decon_label": label,
+                "legend_mode": "outside", "inner_label": "",
+            })
+            panels.append(cfg)
+        return panels or [default_panel(regions[0])]
+
+    count = len(PRESET_GRIDS.get(preset, [])) or PRESETS[preset]["nrows"] * PRESETS[preset]["ncols"]
+    return [default_panel(regions[min(i, len(regions) - 1)]) for i in range(max(1, count))]
+
+
+def hide_inner_x_labels(panels: list[plotting.Panel], ncols: int) -> None:
+    """Only the bottom panel of each column keeps its x tick labels and title."""
+    placement = []
+    for i, panel in enumerate(panels):
+        row, col = (panel.grid[0], panel.grid[1]) if panel.grid else divmod(i, max(1, ncols))
+        placement.append((row, col))
+
+    bottom_row = {}
+    for row, col in placement:
+        bottom_row[col] = max(bottom_row.get(col, row), row)
+    for panel, (row, col) in zip(panels, placement):
+        panel.show_xtick_labels = row == bottom_row[col]
 
 
 def build_panel(cfg: dict[str, Any], sample_list, opts) -> tuple[plotting.Panel, list[float] | None]:
@@ -494,17 +673,21 @@ def tab_figure(opts) -> None:
                               index=list(PRESETS).index(st.session_state.preset))
         if preset != st.session_state.preset:
             st.session_state.preset = preset
-            st.session_state.layout = dict(PRESETS[preset])
-            count = len(PRESET_GRIDS.get(preset, [])) or PRESETS[preset]["nrows"] * PRESETS[preset]["ncols"]
-            st.session_state.panels = [default_panel(regions[min(i, len(regions) - 1)]) for i in range(count)]
+            new_panels = panels_for_preset(preset, sample_list, regions)
+            layout = dict(PRESETS[preset])
+            if layout["nrows"] == 0:            # one panel per sample
+                layout["nrows"] = len(new_panels)
+                layout["height"] = round(PRESETS[preset]["height"] * len(new_panels), 1)
+            st.session_state.layout = layout
+            st.session_state.panels = new_panels
             st.rerun()
 
         layout = st.session_state.layout
         c1, c2, c3, c4 = st.columns(4)
-        layout["nrows"] = c1.number_input("Satır", 1, 6, int(layout["nrows"]))
+        layout["nrows"] = c1.number_input("Satır", 1, 12, max(1, int(layout["nrows"])))
         layout["ncols"] = c2.number_input("Sütun", 1, 8, int(layout["ncols"]))
         layout["width"] = c3.number_input("Genişlik (cm)", 4.0, 40.0, float(layout["width"]), 0.5)
-        layout["height"] = c4.number_input("Yükseklik (cm)", 3.0, 40.0, float(layout["height"]), 0.5)
+        layout["height"] = c4.number_input("Yükseklik (cm)", 3.0, 60.0, float(layout["height"]), 0.5)
 
         c1, c2 = st.columns(2)
         if c1.button("➕ Panel ekle", width="stretch"):
@@ -523,9 +706,15 @@ def tab_figure(opts) -> None:
         letter_outside = c2.checkbox("Harf panel dışında", False)
         letter_bold = c3.checkbox("Kalın harf", False)
         shared_legend = c4.checkbox("Ortak alt legend", len(st.session_state.panels) > 1)
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns([1, 1, 2])
         wspace = c1.slider("Yatay boşluk", 0.0, 1.0, 0.30, 0.02)
         hspace = c2.slider("Dikey boşluk", 0.0, 1.2, 0.38, 0.02)
+        share_x = c3.checkbox(
+            "Alt alta panellerde ortak x ekseni",
+            value=st.session_state.preset == DECON_STACK_PRESET,
+            help="Aynı sütunda altında başka panel olan panellerin x ekseni "
+                 "etiketlerini gizler; yalnızca en alttaki panel eksen başlığını taşır.",
+        )
 
         st.divider()
         tabs = st.tabs([f"Panel {LETTERS[i]}" for i in range(len(st.session_state.panels))])
@@ -544,6 +733,9 @@ def tab_figure(opts) -> None:
         panels.append(panel)
         if offsets is not None:
             offsets_map[i] = offsets
+
+    if share_x:
+        hide_inner_x_labels(panels, int(layout["ncols"]))
 
     legend_entries = []
     if shared_legend:
@@ -766,7 +958,7 @@ def main() -> None:
 
     tab1, tab2, tab3 = st.tabs(["📂 Veri", "📈 Figür", "📊 Tablo"])
     with tab1:
-        tab_data()
+        tab_data(opts)
     with tab2:
         tab_figure(opts)
     with tab3:

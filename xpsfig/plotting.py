@@ -66,6 +66,7 @@ class Panel:
     ylabel: str = "Intensity (a.u.)"
     xlim: tuple[float, float] | None = None   # given as (high, low) after reversal
     xtick_step: float | None = None
+    show_xtick_labels: bool = True
     show_ytick_labels: bool = False
     ypad_top: float = 0.08
     legend_mode: str = "none"                 # "none" | "inside" | "outside"
@@ -151,7 +152,11 @@ def _finish_axes(ax, panel: Panel, letter_template: str, letter_pos, letter_weig
         ax.xaxis.set_major_locator(MultipleLocator(panel.xtick_step))
     ax.xaxis.set_minor_locator(AutoMinorLocator(2))
 
-    ax.set_xlabel(panel.xlabel)
+    if not panel.show_xtick_labels:
+        # ticks stay, labels go - used when stacked panels share one axis
+        ax.tick_params(axis="x", labelbottom=False)
+    else:
+        ax.set_xlabel(panel.xlabel)
     ax.set_ylabel(panel.ylabel)
     if not panel.show_ytick_labels:
         ax.set_yticks([])

@@ -194,6 +194,42 @@ def test_merge_prefers_fitted_region_and_dedupes_peaks():
     assert len(parser.merge_datasets([fitted, fitted], "s").peaks) == len(fitted.peaks)
 
 
+# --- charge correction -----------------------------------------------------
+def test_charge_correction_uses_dominant_peak(dataset):
+    # the synthetic C1s main component sits at 284.52 eV
+    assert parser.charge_correction(dataset, 284.8) == pytest.approx(0.28, abs=0.001)
+
+
+def test_charge_correction_falls_back_to_spectrum_maximum():
+    ds = parser.load_workbook_dataset(make_workbook(with_fit=True))
+    ds.peaks = []                      # simulate a file without a Peak Table
+    delta = parser.charge_correction(ds, 284.8)
+    assert delta == pytest.approx(0.3, abs=0.15)
+
+
+def test_charge_correction_returns_none_for_missing_element(dataset):
+    assert parser.charge_correction(dataset, 284.8, element="F1s") is None
+
+
+def test_shift_moves_energy_and_peak_be(dataset):
+    shifted = parser.shift_dataset(dataset, 0.28)
+    assert shifted.regions["C1s"].energy[0] == pytest.approx(dataset.regions["C1s"].energy[0] + 0.28)
+    assert shifted.peaks[0].peak_be == pytest.approx(284.80)
+    # intensities and the original dataset must be untouched
+    assert shifted.regions["C1s"].raw.y is dataset.regions["C1s"].raw.y
+    assert dataset.peaks[0].peak_be == 284.52
+
+
+def test_zero_shift_returns_same_object(dataset):
+    assert parser.shift_dataset(dataset, 0.0) is dataset
+
+
+def test_shifted_dataset_feeds_tables(dataset):
+    shifted = parser.shift_dataset(dataset, 0.28)
+    df = tables.summary_table([shifted], metrics=["peak_be"], labels=["S"], source="fit")
+    assert df.iloc[0]["C1s"] == "284.80"
+
+
 # --- plotting --------------------------------------------------------------
 def test_normalization_modes():
     y = np.array([1.0, 3.0, 5.0])
